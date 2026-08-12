@@ -1,0 +1,294 @@
+// DHS Pharmacy — multi-tenant inventory & point-of-sale schema.
+// Every business ("Tenant") that signs up gets fully isolated data:
+// its own users, inventory, sales, queue, expenses, and audit log.
+// Every tenant-owned model carries a `tenantId` column, and every
+// query in the app is expected to filter by it (see src/middleware/auth.ts
+// and src/utils/tenantScope.ts).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  ORDER_TAKER
+  CASHIER
+}
+
+enum Department {
+  CASHIER
+}
+
+enum QueueStatus {
+  WAITING
+  CLAIMED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  INSURANCE
+}
+
+enum ClaimStatus {
+  SUBMITTED
+  APPROVED
+  PARTIALLY_PAID
+  PAID
+  REJECTED
+}
+
+enum SaleStatus {
+  CASHIER
+  COMPLETED
+  CANCELLED
+}
+
+// One row per pharmacy business. Created automatically the moment
+// someone signs up — see POST /auth/signup.
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  // Simple atomic counter used to generate human-friendly, per-tenant
+  // sale numbers (SALE-1, SALE-2, ...) without a shared global sequence
+  // leaking information between tenants (or contending under load).
+  saleCounter Int @default(0)
+
+  users                  User[]
+  inventoryItems         InventoryItem[]
+  inventoryTransactions  InventoryTransaction[]
+  sales                  Sale[]
+  saleItems              SaleItem[]
+  billingItems           BillingItem[]
+  payments               Payment[]
+  claimPayments          ClaimPayment[]
+  saleNotes              SaleNote[]
+  queueEntries           QueueEntry[]
+  expenses               Expense[]
+  auditLogs              AuditLog[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  tenantId     String
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  lastLoginAt  DateTime?
+
+  claimedQueueEntries QueueEntry[] @relation("ClaimedBy")
+  auditLogs           AuditLog[]
+
+  @@index([tenantId, role])
+}
+
+model InventoryItem {
+  id           String    @id @default(cuid())
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  tenantId     String
+  name         String
+  category     String    // Medicine | Consumable | Equipment
+  unit         String
+  quantity     Int       @default(0)
+  reorderLevel Int       @default(0)
+  unitPrice    Decimal   @db.Decimal(10, 2)
+  expiryDate   DateTime?
+  batchNo      String?
+  createdAt    DateTime  @default(now())
+
+  saleItems    SaleItem[]
+  transactions InventoryTransaction[]
+
+  @@index([tenantId, category])
+}
+
+model InventoryTransaction {
+  id            String        @id @default(cuid())
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  tenantId      String
+  item          InventoryItem @relation(fields: [itemId], references: [id])
+  itemId        String
+  changeQty     Int
+  reason        String
+  referenceType String?
+  referenceId   String?
+  createdById   String?
+  createdAt     DateTime      @default(now())
+
+  @@index([tenantId, itemId])
+}
+
+// One walk-in order/sale. Unlike the full DHS system, the order-taker both
+// selects items AND dispenses them in a single step (no separate
+// pharmacist hand-off) — so a sale is created already fulfilled, and goes
+// straight into the shared Cashier queue for payment.
+model Sale {
+  id            String     @id @default(cuid())
+  tenant        Tenant     @relation(fields: [tenantId], references: [id])
+  tenantId      String
+  saleNo        String
+  customerName  String?
+  customerPhone String?
+  status        SaleStatus @default(CASHIER)
+  createdById   String?
+  createdAt     DateTime   @default(now())
+  completedAt   DateTime?
+
+  items        SaleItem[]
+  billingItems BillingItem[]
+  payment      Payment?
+  queueEntries QueueEntry[]
+  notes        SaleNote[]
+
+  // Sale numbers are human-friendly and only need to be unique within a
+  // tenant, not globally.
+  @@unique([tenantId, saleNo])
+  @@index([tenantId, createdAt])
+}
+
+model SaleItem {
+  id       String        @id @default(cuid())
+  tenant   Tenant        @relation(fields: [tenantId], references: [id])
+  tenantId String
+  sale     Sale          @relation(fields: [saleId], references: [id])
+  saleId   String
+  item     InventoryItem @relation(fields: [itemId], references: [id])
+  itemId   String
+  quantity Int
+  unitPrice Decimal      @db.Decimal(10, 2) // captured at time of sale, independent of later price changes
+
+  @@index([tenantId, saleId])
+}
+
+model BillingItem {
+  id          String   @id @default(cuid())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  tenantId    String
+  sale        Sale     @relation(fields: [saleId], references: [id])
+  saleId      String
+  description String
+  amount      Decimal  @db.Decimal(10, 2)
+  category    String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, saleId])
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  tenant            Tenant        @relation(fields: [tenantId], references: [id])
+  tenantId          String
+  sale              Sale          @relation(fields: [saleId], references: [id])
+  saleId            String        @unique
+  method            PaymentMethod
+  amount            Decimal       @db.Decimal(10, 2)
+  amountPaid        Decimal       @default(0) @db.Decimal(10, 2)
+  insuranceProvider String?
+  claimNo           String?
+  claimStatus       ClaimStatus?
+  claimSubmittedAt  DateTime?
+  paidAt            DateTime?
+  recordedById      String?
+
+  installments ClaimPayment[]
+
+  @@index([tenantId, method])
+  @@index([tenantId, insuranceProvider])
+}
+
+model ClaimPayment {
+  id           String   @id @default(cuid())
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  tenantId     String
+  payment      Payment  @relation(fields: [paymentId], references: [id])
+  paymentId    String
+  amount       Decimal  @db.Decimal(10, 2)
+  recordedAt   DateTime @default(now())
+  recordedById String?
+  notes        String?
+
+  @@index([tenantId, paymentId])
+}
+
+model SaleNote {
+  id        String   @id @default(cuid())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  tenantId  String
+  sale      Sale     @relation(fields: [saleId], references: [id])
+  saleId    String
+  authorId  String?
+  note      String
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, saleId])
+}
+
+// Shared claim-based queue — currently only used for Cashier, but kept as
+// its own model (rather than a flag on Sale) so a second department can
+// be added later (e.g. splitting order-taking from dispensing) without a
+// schema change.
+model QueueEntry {
+  id          String      @id @default(cuid())
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  tenantId    String
+  sale        Sale        @relation(fields: [saleId], references: [id])
+  saleId      String
+  department  Department
+  status      QueueStatus @default(WAITING)
+
+  claimedBy   User?     @relation("ClaimedBy", fields: [claimedById], references: [id])
+  claimedById String?
+  claimedAt   DateTime?
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, department, status])
+  @@index([tenantId, saleId, department])
+}
+
+model Expense {
+  id           String   @id @default(cuid())
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  tenantId     String
+  date         DateTime
+  category     String
+  amount       Decimal  @db.Decimal(10, 2)
+  vendor       String?
+  notes        String?
+  recordedById String?
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, date])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  tenantId   String
+  user       User?    @relation(fields: [userId], references: [id])
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, userId])
+  @@index([tenantId, createdAt])
+}
