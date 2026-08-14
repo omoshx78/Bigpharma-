@@ -70,6 +70,55 @@ router.post("/:id/restock", requireAuth, requireRole("ORDER_TAKER"), async (req:
   res.json(updated);
 });
 
+const ADJUSTMENT_REASONS = ["Expired", "Damaged", "Stocktake correction", "Internal use", "Theft/loss", "Other"] as const;
+
+const adjustSchema = z.object({
+  quantity: z.number().int().refine((n) => n !== 0, "Quantity can't be zero"),
+  reason: z.enum(ADJUSTMENT_REASONS),
+  notes: z.string().max(500).optional(),
+});
+
+/**
+ * POST /:id/adjust — write off (or add back) stock that moves for a reason
+ * OTHER than a sale or a delivery/restock: expiry, breakage, a stocktake
+ * correction, internal use, loss, etc. Unlike /restock, this accepts a
+ * signed quantity, so it's the one place stock can go down without going
+ * through the sales flow. Every adjustment requires a categorized reason
+ * and is written to both the inventory ledger and the audit log so it's
+ * always traceable to who did it and why.
+ */
+router.post("/:id/adjust", requireAuth, requireRole("ORDER_TAKER"), async (req: AuthedRequest, res) => {
+  const parsed = adjustSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const { quantity, reason, notes } = parsed.data;
+
+  const item = await prisma.inventoryItem.findFirst({ where: { id: req.params.id, tenantId: req.user!.tenantId } });
+  if (!item) return res.status(404).json({ error: "Inventory item not found" });
+
+  if (quantity < 0 && item.quantity + quantity < 0) {
+    return res.status(409).json({ error: `Can't remove ${Math.abs(quantity)} — only ${item.quantity} ${item.unit} in stock` });
+  }
+
+  const fullReason = notes ? `${reason}: ${notes}` : reason;
+
+  const [updated] = await prisma.$transaction([
+    prisma.inventoryItem.update({ where: { id: item.id }, data: { quantity: { increment: quantity } } }),
+    prisma.inventoryTransaction.create({
+      data: { tenantId: req.user!.tenantId, itemId: item.id, changeQty: quantity, reason: fullReason, createdById: req.user!.id },
+    }),
+  ]);
+
+  await logAction({
+    tenantId: req.user!.tenantId,
+    userId: req.user!.id,
+    action: "inventory.adjusted",
+    entityType: "InventoryItem",
+    entityId: item.id,
+    details: { quantity, reason, notes },
+  });
+  res.json(updated);
+});
+
 const updateItemSchema = z.object({
   name: z.string().min(1).optional(),
   unitPrice: z.number().min(0).optional(),

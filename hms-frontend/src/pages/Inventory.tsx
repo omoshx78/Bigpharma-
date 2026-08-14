@@ -6,6 +6,7 @@ import { Card, SectionHeader, Badge, ErrorBanner, money } from "../components/ui
 import { InventoryItem } from "../types";
 
 const CATEGORIES = ["All", "Medicine", "Consumable", "Equipment"];
+const ADJUST_REASONS = ["Expired", "Damaged", "Stocktake correction", "Internal use", "Theft/loss", "Other"];
 
 export default function Inventory() {
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -14,6 +15,8 @@ export default function Inventory() {
   const [showAdd, setShowAdd] = useState(false);
   const [restockAmounts, setRestockAmounts] = useState<Record<string, string>>({});
   const [form, setForm] = useState({ name: "", category: "Medicine", unit: "tablet", quantity: "0", reorderLevel: "20", unitPrice: "0" });
+  const [adjustFor, setAdjustFor] = useState<string | null>(null);
+  const [adjustForm, setAdjustForm] = useState({ quantity: "", reason: ADJUST_REASONS[0], notes: "" });
 
   const load = async () => {
     try {
@@ -52,6 +55,25 @@ export default function Inventory() {
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not restock");
+    }
+  };
+
+  const openAdjust = (id: string) => {
+    setAdjustFor(id);
+    setAdjustForm({ quantity: "", reason: ADJUST_REASONS[0], notes: "" });
+  };
+
+  const submitAdjust = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!adjustFor) return;
+    const qty = Number(adjustForm.quantity);
+    if (!qty) return;
+    try {
+      await api.post(`/inventory/${adjustFor}/adjust`, { quantity: qty, reason: adjustForm.reason, notes: adjustForm.notes || undefined });
+      setAdjustFor(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not adjust stock");
     }
   };
 
@@ -94,7 +116,7 @@ export default function Inventory() {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-slate-500 border-b border-slate-200">
-              <th className="py-1.5 font-normal">Item</th><th className="font-normal">Category</th><th className="font-normal">Stock</th><th className="font-normal">Reorder at</th><th className="font-normal">Unit price</th><th className="font-normal">Restock</th>
+              <th className="py-1.5 font-normal">Item</th><th className="font-normal">Category</th><th className="font-normal">Stock</th><th className="font-normal">Reorder at</th><th className="font-normal">Unit price</th><th className="font-normal">Restock</th><th className="font-normal">Write off / adjust</th>
             </tr>
           </thead>
           <tbody>
@@ -115,11 +137,51 @@ export default function Inventory() {
                     <button onClick={() => restock(i.id)} className="text-xs text-dhs-700 hover:underline">Add</button>
                   </div>
                 </td>
+                <td>
+                  <button onClick={() => openAdjust(i.id)} className="text-xs text-rose-700 hover:underline">Adjust</button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </Card>
+
+      {adjustFor && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setAdjustFor(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-xl p-6 w-full max-w-sm border border-slate-200">
+            <h3 className="text-sm font-semibold mb-1">Adjust stock</h3>
+            <p className="text-xs text-slate-500 mb-4">{items.find((i) => i.id === adjustFor)?.name} — currently {items.find((i) => i.id === adjustFor)?.quantity} {items.find((i) => i.id === adjustFor)?.unit}</p>
+            <form onSubmit={submitAdjust} className="space-y-3">
+              <label className="text-sm block">
+                Quantity change
+                <input
+                  required
+                  type="number"
+                  placeholder="e.g. -5 to remove 5, or 5 to add 5"
+                  value={adjustForm.quantity}
+                  onChange={(e) => setAdjustForm((f) => ({ ...f, quantity: e.target.value }))}
+                  className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+                />
+                <span className="text-xs text-slate-400 mt-1 block">Use a negative number to remove stock (expired, damaged, etc), positive to add it back.</span>
+              </label>
+              <label className="text-sm block">
+                Reason
+                <select value={adjustForm.reason} onChange={(e) => setAdjustForm((f) => ({ ...f, reason: e.target.value }))} className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+                  {ADJUST_REASONS.map((r) => <option key={r}>{r}</option>)}
+                </select>
+              </label>
+              <label className="text-sm block">
+                Notes (optional)
+                <input value={adjustForm.notes} onChange={(e) => setAdjustForm((f) => ({ ...f, notes: e.target.value }))} className="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Batch no, details..." />
+              </label>
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => setAdjustFor(null)} className="flex-1 border border-slate-300 rounded-lg py-2 text-sm hover:bg-slate-50">Cancel</button>
+                <button className="flex-1 bg-rose-700 text-white rounded-lg py-2 text-sm font-medium hover:bg-rose-800">Save adjustment</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
