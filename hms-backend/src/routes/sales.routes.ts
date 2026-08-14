@@ -22,7 +22,7 @@ const SALE_INCLUDE = {
   notes: { orderBy: { createdAt: "asc" as const } },
 };
 
-/** GET /sales?search=name-phone-or-sale-number — for repeat customers and receipt lookup */
+/** GET /sales?search=name-phone-sale-number-or-item — for repeat customers, receipt lookup, and finding sales that included a given medicine */
 router.get("/", requireAuth, async (req: AuthedRequest, res) => {
   const search = (req.query.search as string) || "";
   const sales = await prisma.sale.findMany({
@@ -34,6 +34,7 @@ router.get("/", requireAuth, async (req: AuthedRequest, res) => {
               { saleNo: { contains: search, mode: "insensitive" } },
               { customerName: { contains: search, mode: "insensitive" } },
               { customerPhone: { contains: search } },
+              { items: { some: { item: { name: { contains: search, mode: "insensitive" } } } } },
             ],
           }
         : {}),

@@ -28,7 +28,7 @@ export default function SalesLookup() {
       } finally {
         setLoading(false);
       }
-    }, 300);
+    }, 200);
     return () => clearTimeout(handle);
   }, [search]);
 
@@ -44,13 +44,13 @@ export default function SalesLookup() {
 
   return (
     <div>
-      <SectionHeader title="Sales Lookup" subtitle="Search recent and past sales by customer name, phone, or sale number" />
+      <SectionHeader title="Sales Lookup" subtitle="Search recent and past sales by customer name, phone, sale number, or medicine sold" />
       <ErrorBanner message={error} />
       <div className="grid grid-cols-3 gap-5">
         <Card className="col-span-1">
           <div className="relative mb-3">
             <Search size={14} className="absolute left-2.5 top-2.5 text-slate-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, phone, or sale no..." className="w-full border border-slate-300 rounded-lg pl-8 pr-3 py-2 text-sm" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name, phone, sale no, or medicine..." className="w-full border border-slate-300 rounded-lg pl-8 pr-3 py-2 text-sm" />
           </div>
           <p className="text-xs text-slate-400 mb-2">{search.trim() ? "Search results" : "Recent sales"}</p>
           {loading ? (
