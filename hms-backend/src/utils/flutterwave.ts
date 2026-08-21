@@ -66,11 +66,11 @@ export async function initiateSubscriptionPayment(params: InitiatePaymentParams)
     }),
   });
 
-  const data = await res.json();
+  const data = (await res.json()) as { status?: string; message?: string; data?: { link?: string } };
   if (!res.ok || data.status !== "success" || !data.data?.link) {
     throw new Error(data.message || "Flutterwave did not return a checkout link");
   }
-  return data.data.link as string;
+  return data.data.link;
 }
 
 export interface VerifiedTransaction {
@@ -90,16 +90,20 @@ export async function verifyTransaction(transactionId: string): Promise<Verified
   const res = await fetch(`${FLW_BASE_URL}/transactions/${transactionId}/verify`, {
     headers: { Authorization: `Bearer ${requireSecretKey()}` },
   });
-  const data = await res.json();
-  if (!res.ok || data.status !== "success") {
+  const data = (await res.json()) as {
+    status?: string;
+    message?: string;
+    data?: { id?: number | string; tx_ref?: string; status?: string; amount?: number; currency?: string };
+  };
+  if (!res.ok || data.status !== "success" || !data.data) {
     throw new Error(data.message || "Could not verify transaction with Flutterwave");
   }
   return {
     id: String(data.data.id),
-    txRef: data.data.tx_ref,
-    status: data.data.status,
+    txRef: data.data.tx_ref ?? "",
+    status: data.data.status ?? "",
     amount: Number(data.data.amount),
-    currency: data.data.currency,
+    currency: data.data.currency ?? "",
   };
 }
 
