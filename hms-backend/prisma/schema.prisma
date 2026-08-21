@@ -71,7 +71,7 @@ model Tenant {
   // window, or LOCKED is computed on the fly from this timestamp (see
   // src/middleware/subscriptionGate.ts) rather than stored, so there's
   // no background job required to "expire" anyone.
-  currentPeriodEnd      DateTime
+  currentPeriodEnd      DateTime  @default(dbgenerated("(now() + interval '30 days')"))
   subscriptionCanceledAt DateTime?
 
   users                  User[]
