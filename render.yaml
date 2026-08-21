@@ -36,3 +36,19 @@ services:
         value: "15"
       - key: SUBSCRIPTION_CURRENCY
         value: USD
+      - key: DARAJA_ENV
+        value: sandbox # switch to "production" only once tested end-to-end
+      - key: DARAJA_CONSUMER_KEY
+        sync: false
+      - key: DARAJA_CONSUMER_SECRET
+        sync: false
+      - key: DARAJA_SHORTCODE
+        sync: false # your Paybill or Till number
+      - key: DARAJA_PASSKEY
+        sync: false
+      - key: DARAJA_TRANSACTION_TYPE
+        value: CustomerPayBillOnline # use CustomerBuyGoodsOnline if DARAJA_SHORTCODE is a Till number
+      - key: FX_MARKUP_PERCENT
+        value: "0" # e.g. "2" adds 2% on top of the live USD->KES rate to cover slippage
+      - key: FX_FALLBACK_USD_KES
+        sync: false # optional manual rate used only if the live FX lookup fails; leave unset to fail cleanly instead

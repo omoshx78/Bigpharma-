@@ -1,6 +1,6 @@
 /**
  * Thin wrapper around Flutterwave's v3 REST API for platform subscription
- * billing (card + M-Pesa via one integration). Keep all Flutterwave HTTP
+ * billing — card payments. Keep all Flutterwave HTTP
  * calls in this one file so there's a single place to audit.
  *
  * Required env vars (set on Render, never commit or paste into chat):
@@ -33,16 +33,26 @@ export function isBillingConfigured(): boolean {
 
 interface InitiatePaymentParams {
   txRef: string;
+  amount: number;
+  currency: string;
   customerEmail: string;
   customerName: string;
   tenantName: string;
 }
 
 /**
- * Creates a Flutterwave Standard Checkout session — a hosted payment
- * page that itself offers card, M-Pesa, and other local payment methods
- * as tabs, so we don't need to build separate flows for each. Returns
- * the checkout URL to redirect the browser to.
+ * Creates a Flutterwave Standard Checkout session — a hosted card
+ * payment page. Whether Flutterwave also offers M-Pesa or other local
+ * methods there depends on your account's enabled channels AND the
+ * transaction currency (M-Pesa can't settle in USD, for instance) — it's
+ * not guaranteed, so this app treats Flutterwave as the card path and
+ * uses direct Daraja STK Push (see daraja.ts) as the actual, reliable
+ * M-Pesa path. Returns the checkout URL to redirect the browser to.
+ *
+ * Takes amount/currency as parameters (rather than always using the
+ * platform-default SUBSCRIPTION_AMOUNT/CURRENCY) so callers can pass a
+ * tenant's own price override — see Tenant.subscriptionAmount in the
+ * schema and resolveTenantPrice() in billing.routes.ts.
  *
  * redirect_url points at THIS backend's own /billing/callback (not the
  * frontend) — that's where server-to-server verification happens before
@@ -58,8 +68,8 @@ export async function initiateSubscriptionPayment(params: InitiatePaymentParams)
     headers: { Authorization: `Bearer ${requireSecretKey()}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       tx_ref: params.txRef,
-      amount: SUBSCRIPTION_AMOUNT,
-      currency: SUBSCRIPTION_CURRENCY,
+      amount: params.amount,
+      currency: params.currency,
       redirect_url: `${apiBaseUrl}/billing/callback`,
       customer: { email: params.customerEmail, name: params.customerName },
       customizations: { title: "DHS Pharmacy subscription", description: `Monthly subscription — ${params.tenantName}` },

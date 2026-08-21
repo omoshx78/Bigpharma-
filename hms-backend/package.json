@@ -10,7 +10,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "prisma:generate": "prisma generate",
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "ts-node prisma/seed.ts",
+    "billing:set-price": "ts-node prisma/set-tenant-price.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",

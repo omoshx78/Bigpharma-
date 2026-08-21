@@ -74,6 +74,14 @@ model Tenant {
   currentPeriodEnd      DateTime  @default(dbgenerated("(now() + interval '30 days')"))
   subscriptionCanceledAt DateTime?
 
+  // Optional per-tenant price override. Null means "use the platform
+  // default" (SUBSCRIPTION_AMOUNT / SUBSCRIPTION_CURRENCY env vars).
+  // Set via the set-tenant-price script — deliberately NOT exposed to
+  // tenant admins through the app, since letting a pharmacy set its own
+  // price would defeat the point.
+  subscriptionAmount   Decimal? @db.Decimal(10, 2)
+  subscriptionCurrency String?
+
   users                  User[]
   inventoryItems         InventoryItem[]
   inventoryTransactions  InventoryTransaction[]
@@ -95,23 +103,45 @@ enum SubscriptionPaymentStatus {
   FAILED
 }
 
+enum SubscriptionPaymentProvider {
+  FLUTTERWAVE
+  DARAJA
+}
+
 // A record of every platform subscription charge attempt (not to be
 // confused with Payment, which is a pharmacy's own customer sale
 // payment). One successful row here extends Tenant.currentPeriodEnd by
-// one month.
+// one month. Covers two independent payment paths: Flutterwave (card +
+// its own M-Pesa flow) and direct Safaricom Daraja STK Push (M-Pesa
+// only, KES only) — see provider.
 model SubscriptionPayment {
-  id               String                    @id @default(cuid())
-  tenant           Tenant                    @relation(fields: [tenantId], references: [id])
+  id               String                      @id @default(cuid())
+  tenant           Tenant                      @relation(fields: [tenantId], references: [id])
   tenantId         String
-  txRef            String                    @unique
-  flwTransactionId String?
-  amount           Decimal                   @db.Decimal(10, 2)
+  provider         SubscriptionPaymentProvider @default(FLUTTERWAVE)
+  txRef            String                      @unique
+  amount           Decimal                     @db.Decimal(10, 2)
   currency         String
-  status           SubscriptionPaymentStatus @default(PENDING)
+  status           SubscriptionPaymentStatus   @default(PENDING)
   paidAt           DateTime?
   periodStart      DateTime?
   periodEnd        DateTime?
-  createdAt        DateTime                  @default(now())
+  createdAt        DateTime                    @default(now())
+
+  // Flutterwave-specific
+  flwTransactionId String?
+
+  // Daraja (M-Pesa STK Push) specific
+  checkoutRequestId String? @unique
+  merchantRequestId String?
+  phoneNumber       String?
+  mpesaReceiptNumber String?
+  // If the tenant's real price (amount/currency above) isn't KES, this
+  // is the converted amount actually charged via STK Push, and the rate
+  // used to get there — kept for reconciliation/support, and used to
+  // verify the M-Pesa payment instead of the tenant's original currency.
+  kesAmount Decimal? @db.Decimal(10, 2)
+  fxRate    Decimal? @db.Decimal(12, 6)
 
   @@index([tenantId, createdAt])
 }
