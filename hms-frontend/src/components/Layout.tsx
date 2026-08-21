@@ -1,9 +1,11 @@
 import { NavLink, Outlet, Link } from "react-router-dom";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard, ShoppingCart, Wallet, Boxes, BarChart3, LogOut,
-  KeyRound, ShieldCheck, ShieldAlert, Receipt,
+  KeyRound, ShieldCheck, ShieldAlert, Receipt, CreditCard, AlertTriangle,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import { api } from "../api/client";
 import { Role } from "../types";
 
 const NAV: { to: string; label: string; icon: any; roles: Role[] | "all" }[] = [
@@ -15,11 +17,18 @@ const NAV: { to: string; label: string; icon: any; roles: Role[] | "all" }[] = [
   { to: "/reports", label: "Reports", icon: BarChart3, roles: ["CASHIER", "ADMIN"] },
   { to: "/staff", label: "Staff", icon: ShieldCheck, roles: ["ADMIN"] },
   { to: "/audit-log", label: "Audit log", icon: ShieldAlert, roles: ["ADMIN"] },
+  { to: "/billing", label: "Billing", icon: CreditCard, roles: ["ADMIN"] },
 ];
 
 export function Layout() {
   const { user, tenant, logout } = useAuth();
-  const visible = NAV.filter((n) => n.roles === "all" || (user && n.roles.includes(user.role)));
+  const visible = NAV.filter((n) => n.roles === "all" || (user && (user.role === "ADMIN" || n.roles.includes(user.role))));
+  const [billingState, setBillingState] = useState<{ state: "ACTIVE" | "GRACE" | "LOCKED"; currentPeriodEnd: string } | null>(null);
+
+  useEffect(() => {
+    if (user?.role !== "ADMIN") return;
+    api.get("/billing/status").then(setBillingState).catch(() => {});
+  }, [user?.role]);
 
   return (
     <div className="w-full min-h-screen bg-slate-50 text-slate-900 flex">
@@ -57,6 +66,15 @@ export function Layout() {
         </div>
       </aside>
       <main className="flex-1 overflow-auto">
+        {billingState && billingState.state !== "ACTIVE" && (
+          <div className={`px-6 py-2.5 text-sm flex items-center gap-2 ${billingState.state === "LOCKED" ? "bg-rose-50 text-rose-800 border-b border-rose-200" : "bg-amber-50 text-amber-800 border-b border-amber-200"}`}>
+            <AlertTriangle size={15} className="shrink-0" />
+            {billingState.state === "LOCKED"
+              ? "Subscription payment overdue \u2014 the account is read-only until payment is made."
+              : `Subscription payment is due \u2014 pay by ${new Date(billingState.currentPeriodEnd).toLocaleDateString()} to avoid read-only mode.`}
+            <Link to="/billing" className="ml-auto font-medium underline shrink-0">Go to Billing</Link>
+          </div>
+        )}
         <div className="max-w-6xl mx-auto p-6">
           <Outlet />
         </div>

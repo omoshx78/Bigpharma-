@@ -64,6 +64,16 @@ model Tenant {
   // leaking information between tenants (or contending under load).
   saleCounter Int @default(0)
 
+  // --- Platform subscription billing (Flutterwave: card + M-Pesa) ---
+  // currentPeriodEnd is the single source of truth for access: it's set
+  // 14 days out at signup (free trial), and pushed forward one month by
+  // each successful payment. Whether the tenant is ACTIVE, in its grace
+  // window, or LOCKED is computed on the fly from this timestamp (see
+  // src/middleware/subscriptionGate.ts) rather than stored, so there's
+  // no background job required to "expire" anyone.
+  currentPeriodEnd      DateTime
+  subscriptionCanceledAt DateTime?
+
   users                  User[]
   inventoryItems         InventoryItem[]
   inventoryTransactions  InventoryTransaction[]
@@ -76,6 +86,34 @@ model Tenant {
   queueEntries           QueueEntry[]
   expenses               Expense[]
   auditLogs              AuditLog[]
+  subscriptionPayments   SubscriptionPayment[]
+}
+
+enum SubscriptionPaymentStatus {
+  PENDING
+  SUCCESSFUL
+  FAILED
+}
+
+// A record of every platform subscription charge attempt (not to be
+// confused with Payment, which is a pharmacy's own customer sale
+// payment). One successful row here extends Tenant.currentPeriodEnd by
+// one month.
+model SubscriptionPayment {
+  id               String                    @id @default(cuid())
+  tenant           Tenant                    @relation(fields: [tenantId], references: [id])
+  tenantId         String
+  txRef            String                    @unique
+  flwTransactionId String?
+  amount           Decimal                   @db.Decimal(10, 2)
+  currency         String
+  status           SubscriptionPaymentStatus @default(PENDING)
+  paidAt           DateTime?
+  periodStart      DateTime?
+  periodEnd        DateTime?
+  createdAt        DateTime                  @default(now())
+
+  @@index([tenantId, createdAt])
 }
 
 model User {

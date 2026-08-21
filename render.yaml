@@ -24,3 +24,15 @@ services:
         value: 12h
       - key: CORS_ORIGIN
         sync: false
+      - key: API_BASE_URL
+        sync: false # this backend's own public Render URL, e.g. https://dhs-pharmacy-backend.onrender.com
+      - key: FRONTEND_URL
+        sync: false # your Vercel URL, e.g. https://bigpharma.vercel.app
+      - key: FLW_SECRET_KEY
+        sync: false # from the Flutterwave dashboard — never commit this, set it directly on Render
+      - key: FLW_WEBHOOK_SECRET_HASH
+        sync: false # the "Secret Hash" you set under Flutterwave dashboard > Settings > Webhooks
+      - key: SUBSCRIPTION_AMOUNT
+        value: "15"
+      - key: SUBSCRIPTION_CURRENCY
+        value: USD

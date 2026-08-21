@@ -16,7 +16,9 @@ async function main() {
 
   let tenant = await prisma.tenant.findUnique({ where: { slug } });
   if (!tenant) {
-    tenant = await prisma.tenant.create({ data: { name: "Demo Pharmacy", slug } });
+    tenant = await prisma.tenant.create({
+      data: { name: "Demo Pharmacy", slug, currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) },
+    });
     console.log(`Created demo tenant: ${tenant.name} (${tenant.slug})`);
   }
 

@@ -14,6 +14,7 @@ import Inventory from "./pages/Inventory";
 import Reports from "./pages/Reports";
 import Staff from "./pages/Staff";
 import AuditLog from "./pages/AuditLog";
+import Billing from "./pages/Billing";
 import ChangePassword from "./pages/ChangePassword";
 import PrintReceipt from "./pages/PrintReceipt";
 import PrintStock from "./pages/PrintStock";
@@ -117,6 +118,14 @@ export default function App() {
           element={
             <Guard roles={["ADMIN"]}>
               <AuditLog />
+            </Guard>
+          }
+        />
+        <Route
+          path="/billing"
+          element={
+            <Guard roles={["ADMIN"]}>
+              <Billing />
             </Guard>
           }
         />
