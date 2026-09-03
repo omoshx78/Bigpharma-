@@ -108,6 +108,42 @@ enum SubscriptionPaymentProvider {
   DARAJA
 }
 
+// --- Platform layer: sits ABOVE every tenant, completely separate from
+// tenant auth (Tenant/User above). A PlatformAdmin is the SaaS owner
+// (you), not a pharmacy — no tenantId, no relation to any Tenant. Its
+// JWT has a distinct shape (see src/middleware/platformAuth.ts) so a
+// tenant token and a platform token can never be confused for one
+// another, even by a bug.
+model PlatformAdmin {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  lastLoginAt  DateTime?
+
+  expenses PlatformExpense[]
+}
+
+// The PLATFORM's own operating costs (hosting, payment processor fees,
+// marketing, etc.) — NOT to be confused with Expense, which is a
+// tenant's own pharmacy operating costs. Used for the super admin's net
+// figures (platform subscription revenue minus these).
+model PlatformExpense {
+  id           String         @id @default(cuid())
+  date         DateTime
+  category     String
+  amount       Decimal        @db.Decimal(10, 2)
+  currency     String
+  vendor       String?
+  notes        String?
+  recordedBy   PlatformAdmin? @relation(fields: [recordedById], references: [id])
+  recordedById String?
+  createdAt    DateTime       @default(now())
+
+  @@index([date])
+}
+
 // A record of every platform subscription charge attempt (not to be
 // confused with Payment, which is a pharmacy's own customer sale
 // payment). One successful row here extends Tenant.currentPeriodEnd by

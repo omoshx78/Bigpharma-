@@ -7,7 +7,10 @@ const GRACE_PERIOD_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
 // Paths that must always remain reachable regardless of subscription
 // state — a locked tenant still needs to be able to log in, sign up (N/A
 // for existing tenants, but harmless), and above all pay to unlock.
-const EXEMPT_PREFIXES = ["/health", "/auth/login", "/auth/signup", "/auth/me", "/billing"];
+// /platform is a completely separate auth realm (see platformAuth.ts)
+// with no tenant at all, so it's exempted explicitly rather than relying
+// on the "no tenantId in token" fallback below.
+const EXEMPT_PREFIXES = ["/health", "/auth/login", "/auth/signup", "/auth/me", "/billing", "/platform"];
 
 export type SubscriptionState = "ACTIVE" | "GRACE" | "LOCKED";
 

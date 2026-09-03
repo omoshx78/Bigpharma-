@@ -1,7 +1,9 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { ReactNode } from "react";
 import { useAuth } from "./auth/AuthContext";
+import { usePlatformAuth } from "./platform/PlatformAuthContext";
 import { Layout } from "./components/Layout";
+import { PlatformLayout } from "./platform/PlatformLayout";
 import { Role } from "./types";
 
 import Login from "./pages/Login";
@@ -19,6 +21,10 @@ import ChangePassword from "./pages/ChangePassword";
 import PrintReceipt from "./pages/PrintReceipt";
 import PrintStock from "./pages/PrintStock";
 import PrintReportDetail from "./pages/PrintReportDetail";
+import PlatformLogin from "./platform/PlatformLogin";
+import PlatformDashboard from "./platform/PlatformDashboard";
+import PlatformPayments from "./platform/PlatformPayments";
+import PlatformExpenses from "./platform/PlatformExpenses";
 
 function Guard({ roles, children }: { roles?: Role[]; children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -31,6 +37,17 @@ function Guard({ roles, children }: { roles?: Role[]; children: ReactNode }) {
       </div>
     );
   }
+  return <>{children}</>;
+}
+
+// Completely separate from the tenant Guard above — checks
+// usePlatformAuth() (a distinct context/token), never useAuth(). A
+// tenant admin, however privileged within their own pharmacy, has no
+// path into anything under /platform.
+function PlatformGuard({ children }: { children: ReactNode }) {
+  const { admin, loading } = usePlatformAuth();
+  if (loading) return <div className="min-h-screen bg-slate-950 p-8 text-slate-400 text-sm">Loading...</div>;
+  if (!admin) return <Navigate to="/platform/login" replace />;
   return <>{children}</>;
 }
 
@@ -130,6 +147,18 @@ export default function App() {
           }
         />
         <Route path="/change-password" element={<ChangePassword />} />
+      </Route>
+      <Route path="/platform/login" element={<PlatformLogin />} />
+      <Route
+        element={
+          <PlatformGuard>
+            <PlatformLayout />
+          </PlatformGuard>
+        }
+      >
+        <Route path="/platform" element={<PlatformDashboard />} />
+        <Route path="/platform/payments" element={<PlatformPayments />} />
+        <Route path="/platform/expenses" element={<PlatformExpenses />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

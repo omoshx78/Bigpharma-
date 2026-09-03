@@ -52,3 +52,5 @@ services:
         value: "0" # e.g. "2" adds 2% on top of the live USD->KES rate to cover slippage
       - key: FX_FALLBACK_USD_KES
         sync: false # optional manual rate used only if the live FX lookup fails; leave unset to fail cleanly instead
+      - key: PLATFORM_REPORTING_CURRENCY
+        value: USD # currency the super admin dashboard's summary totals are shown in

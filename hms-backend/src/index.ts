@@ -10,6 +10,7 @@ import salesRoutes from "./routes/sales.routes";
 import queueRoutes from "./routes/queue.routes";
 import reportRoutes from "./routes/reports.routes";
 import billingRoutes from "./routes/billing.routes";
+import platformRoutes from "./routes/platform.routes";
 import { subscriptionGate } from "./middleware/subscriptionGate";
 
 const app = express();
@@ -67,6 +68,7 @@ app.use("/sales", salesRoutes);
 app.use("/queue", queueRoutes);
 app.use("/reports", reportRoutes);
 app.use("/billing", billingRoutes);
+app.use("/platform", platformRoutes);
 
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);
