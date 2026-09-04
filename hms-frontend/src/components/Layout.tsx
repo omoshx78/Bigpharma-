@@ -20,6 +20,15 @@ const NAV: { to: string; label: string; icon: any; roles: Role[] | "all" }[] = [
   { to: "/billing", label: "Billing", icon: CreditCard, roles: ["ADMIN"] },
 ];
 
+// How many days out to start showing an advance "renews soon" heads-up
+// while the subscription is still ACTIVE (i.e. before it's even overdue).
+const DUE_SOON_DAYS = 3;
+
+function daysUntil(isoDate: string): number {
+  const ms = new Date(isoDate).getTime() - Date.now();
+  return Math.ceil(ms / (24 * 60 * 60 * 1000));
+}
+
 export function Layout() {
   const { user, tenant, logout } = useAuth();
   const visible = NAV.filter((n) => n.roles === "all" || (user && (user.role === "ADMIN" || n.roles.includes(user.role))));
@@ -66,12 +75,27 @@ export function Layout() {
         </div>
       </aside>
       <main className="flex-1 overflow-auto">
-        {billingState && billingState.state !== "ACTIVE" && (
-          <div className={`px-6 py-2.5 text-sm flex items-center gap-2 ${billingState.state === "LOCKED" ? "bg-rose-50 text-rose-800 border-b border-rose-200" : "bg-amber-50 text-amber-800 border-b border-amber-200"}`}>
+        {billingState && billingState.state === "LOCKED" && (
+          <div className="px-6 py-2.5 text-sm flex items-center gap-2 bg-rose-50 text-rose-800 border-b border-rose-200">
             <AlertTriangle size={15} className="shrink-0" />
-            {billingState.state === "LOCKED"
-              ? "Subscription payment overdue \u2014 the account is read-only until payment is made."
-              : `Subscription payment is due \u2014 pay by ${new Date(billingState.currentPeriodEnd).toLocaleDateString()} to avoid read-only mode.`}
+            Subscription payment overdue — the account is read-only until payment is made.
+            <Link to="/billing" className="ml-auto font-medium underline shrink-0">Go to Billing</Link>
+          </div>
+        )}
+        {billingState && billingState.state === "GRACE" && (
+          <div className="px-6 py-2.5 text-sm flex items-center gap-2 bg-amber-50 text-amber-800 border-b border-amber-200">
+            <AlertTriangle size={15} className="shrink-0" />
+            Subscription payment is overdue — pay by {new Date(billingState.currentPeriodEnd).toLocaleDateString()} to avoid read-only mode.
+            <Link to="/billing" className="ml-auto font-medium underline shrink-0">Go to Billing</Link>
+          </div>
+        )}
+        {billingState && billingState.state === "ACTIVE" && daysUntil(billingState.currentPeriodEnd) <= DUE_SOON_DAYS && (
+          <div className="px-6 py-2.5 text-sm flex items-center gap-2 bg-sky-50 text-sky-800 border-b border-sky-200">
+            <AlertTriangle size={15} className="shrink-0" />
+            {(() => {
+              const d = daysUntil(billingState.currentPeriodEnd);
+              return d <= 0 ? "Subscription renews today" : `Subscription renews in ${d} day${d === 1 ? "" : "s"} — ${new Date(billingState.currentPeriodEnd).toLocaleDateString()}`;
+            })()}
             <Link to="/billing" className="ml-auto font-medium underline shrink-0">Go to Billing</Link>
           </div>
         )}

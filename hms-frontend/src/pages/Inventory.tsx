@@ -1,9 +1,11 @@
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, useRef, FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Printer } from "lucide-react";
+import { Plus, Printer, Upload, Download, X } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import { Card, SectionHeader, Badge, ErrorBanner, money } from "../components/ui";
 import { InventoryItem } from "../types";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 const CATEGORIES = ["All", "Medicine", "Consumable", "Equipment"];
 const ADJUST_REASONS = ["Expired", "Damaged", "Stocktake correction", "Internal use", "Theft/loss", "Other"];
@@ -17,6 +19,9 @@ export default function Inventory() {
   const [form, setForm] = useState({ name: "", category: "Medicine", unit: "tablet", quantity: "0", reorderLevel: "20", unitPrice: "0" });
   const [adjustFor, setAdjustFor] = useState<string | null>(null);
   const [adjustForm, setAdjustForm] = useState({ quantity: "", reason: ADJUST_REASONS[0], notes: "" });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ created: number; skipped: { row: number; name?: string; reason?: string }[]; errors: { row: number; name?: string; reason?: string }[] } | null>(null);
 
   const load = async () => {
     try {
@@ -77,6 +82,26 @@ export default function Inventory() {
     }
   };
 
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setError(null);
+    setImportResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const result = await api.upload("/inventory/import", formData);
+      setImportResult(result);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not import that file");
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   return (
     <div>
       <SectionHeader
@@ -85,11 +110,33 @@ export default function Inventory() {
         action={
           <div className="flex gap-2">
             <Link to="/print/stock" target="_blank" className="border border-slate-300 text-slate-700 rounded-lg py-2 px-4 text-sm font-medium hover:bg-slate-50 inline-flex items-center gap-1.5"><Printer size={15} /> Print stock list</Link>
+            <a href={`${API_URL}/inventory/import/template`} className="border border-slate-300 text-slate-700 rounded-lg py-2 px-4 text-sm font-medium hover:bg-slate-50 inline-flex items-center gap-1.5"><Download size={15} /> Download template</a>
+            <button onClick={() => fileInputRef.current?.click()} disabled={importing} className="border border-slate-300 text-slate-700 rounded-lg py-2 px-4 text-sm font-medium hover:bg-slate-50 inline-flex items-center gap-1.5 disabled:opacity-50">
+              <Upload size={15} /> {importing ? "Importing..." : "Import Excel"}
+            </button>
+            <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFileSelected} className="hidden" />
             <button onClick={() => setShowAdd((s) => !s)} className="bg-dhs-800 text-white rounded-lg py-2 px-4 text-sm font-medium hover:bg-dhs-900 inline-flex items-center gap-1.5"><Plus size={15} /> Add item</button>
           </div>
         }
       />
       <ErrorBanner message={error} />
+
+      {importResult && (
+        <div className="mb-4 rounded-lg border border-slate-200 bg-white p-4 relative">
+          <button onClick={() => setImportResult(null)} className="absolute top-3 right-3 text-slate-400 hover:text-slate-600"><X size={16} /></button>
+          <p className="text-sm font-medium text-slate-700 mb-1">
+            Import complete: <span className="text-emerald-700">{importResult.created} added</span>
+            {importResult.skipped.length > 0 && <span className="text-amber-700">, {importResult.skipped.length} skipped</span>}
+            {importResult.errors.length > 0 && <span className="text-rose-700">, {importResult.errors.length} had errors</span>}
+          </p>
+          {(importResult.skipped.length > 0 || importResult.errors.length > 0) && (
+            <ul className="text-xs text-slate-500 mt-2 space-y-0.5 max-h-32 overflow-auto">
+              {importResult.skipped.map((r, i) => <li key={`s${i}`}>Row {r.row} ({r.name}): {r.reason}</li>)}
+              {importResult.errors.map((r, i) => <li key={`e${i}`} className="text-rose-600">Row {r.row}{r.name ? ` (${r.name})` : ""}: {r.reason}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
       {showAdd && (
         <Card className="mb-4">
           <form onSubmit={submitAdd} className="grid grid-cols-6 gap-2.5 items-end">

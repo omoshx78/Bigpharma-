@@ -150,7 +150,13 @@ export default function Billing() {
           <div className="grid grid-cols-2 gap-4 mb-5">
             <div>
               <p className="text-xs text-slate-400 mb-0.5">{status.state === "ACTIVE" ? "Renews / due" : "Was due"}</p>
-              <p className="text-sm font-medium">{new Date(status.currentPeriodEnd).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}</p>
+              <p className="text-sm font-medium">
+                {new Date(status.currentPeriodEnd).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+                {status.state === "ACTIVE" && (() => {
+                  const d = Math.ceil((new Date(status.currentPeriodEnd).getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+                  return <span className="text-xs text-slate-400 font-normal"> — {d <= 0 ? "today" : `in ${d} day${d === 1 ? "" : "s"}`}</span>;
+                })()}
+              </p>
             </div>
             <div>
               <p className="text-xs text-slate-400 mb-0.5">Monthly price</p>

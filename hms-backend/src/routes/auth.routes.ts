@@ -64,7 +64,7 @@ router.post("/signup", async (req, res) => {
   const passwordHash = await bcrypt.hash(password, 12);
 
   const { tenant, user } = await prisma.$transaction(async (tx) => {
-    const trialEnd = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14-day free trial
+    const trialEnd = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000); // 3-day free trial
     const tenant = await tx.tenant.create({ data: { name: businessName, slug, currentPeriodEnd: trialEnd } });
     const user = await tx.user.create({
       data: { tenantId: tenant.id, name: adminName, email, passwordHash, role: "ADMIN" },

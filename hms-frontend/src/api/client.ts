@@ -44,9 +44,32 @@ async function request(path: string, options: RequestInit = {}) {
   return data;
 }
 
+/** For file uploads — deliberately doesn't set Content-Type, since the browser needs to add its own multipart boundary automatically. */
+async function uploadRequest(path: string, formData: FormData) {
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  let data: any = null;
+  try {
+    data = await res.json();
+  } catch {
+    // no JSON body
+  }
+
+  if (!res.ok) {
+    if (res.status === 401) setToken(null);
+    throw new ApiError(data?.error || `Upload failed (${res.status})`, res.status);
+  }
+  return data;
+}
+
 export const api = {
   get: (path: string) => request(path),
   post: (path: string, body?: unknown) => request(path, { method: "POST", body: JSON.stringify(body ?? {}) }),
   patch: (path: string, body?: unknown) => request(path, { method: "PATCH", body: JSON.stringify(body ?? {}) }),
   delete: (path: string) => request(path, { method: "DELETE" }),
+  upload: (path: string, formData: FormData) => uploadRequest(path, formData),
 };

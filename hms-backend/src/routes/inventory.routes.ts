@@ -1,4 +1,6 @@
 import { Router } from "express";
+import multer from "multer";
+import * as XLSX from "xlsx";
 import { z } from "zod";
 import { prisma } from "../db";
 import { requireAuth, AuthedRequest } from "../middleware/auth";
@@ -6,6 +8,7 @@ import { requireRole } from "../middleware/roles";
 import { logAction } from "../utils/audit";
 
 const router = Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }); // 5MB cap — a stock list has no business being bigger than this
 
 router.get("/", requireAuth, async (req: AuthedRequest, res) => {
   const category = req.query.category as string | undefined;
@@ -148,6 +151,161 @@ router.get("/:id/transactions", requireAuth, async (req: AuthedRequest, res) => 
     take: 100,
   });
   res.json(transactions);
+});
+
+// ---------------------------------------------------------------------
+// Bulk stock import from Excel/CSV
+// ---------------------------------------------------------------------
+
+const IMPORT_HEADERS = ["Name", "Category", "Unit", "Quantity", "Reorder Level", "Unit Price", "Expiry Date", "Batch No"];
+
+/** GET /inventory/import/template — a starter .xlsx with the exact headers the importer expects, plus one example row. Public (no requireAuth) since it's generic and carries no tenant data — lets the frontend use a plain download link. */
+router.get("/import/template", (_req, res) => {
+  const wsData = [
+    IMPORT_HEADERS,
+    ["Paracetamol 500mg", "Medicine", "tablet", 200, 50, 5, "2027-06-30", "PCM-2501"],
+    ["Surgical Gloves (box)", "Consumable", "box", 20, 10, 300, "", ""],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Stock");
+  const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", 'attachment; filename="stock-import-template.xlsx"');
+  res.send(buffer);
+});
+
+const VALID_CATEGORIES = ["Medicine", "Consumable", "Equipment"];
+
+function normalizeRowKeys(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(row)) out[k.trim().toLowerCase()] = v;
+  return out;
+}
+
+interface ImportRowResult {
+  row: number;
+  name?: string;
+  status: "created" | "skipped" | "error";
+  reason?: string;
+}
+
+/**
+ * POST /inventory/import — bulk-add inventory from an uploaded Excel or
+ * CSV file (xlsx parses both). Rows matching an EXISTING item by name
+ * (case-insensitive, within this tenant) are skipped, not updated — use
+ * Restock or Adjust for changing an existing item's quantity. Every
+ * created row goes through the exact same two-step
+ * InventoryItem + InventoryTransaction creation as a manually-added item,
+ * so the stock ledger looks identical either way.
+ */
+router.post("/import", requireAuth, requireRole("ORDER_TAKER"), upload.single("file"), async (req: AuthedRequest, res) => {
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+  let sheet: Record<string, unknown>[];
+  try {
+    const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true });
+    const firstSheetName = wb.SheetNames[0];
+    if (!firstSheetName) throw new Error("empty workbook");
+    sheet = XLSX.utils.sheet_to_json(wb.Sheets[firstSheetName], { defval: "" });
+  } catch {
+    return res.status(400).json({ error: "Could not read that file — make sure it's a valid .xlsx or .csv file" });
+  }
+
+  if (sheet.length === 0) return res.status(400).json({ error: "That file has no data rows" });
+  if (sheet.length > 2000) return res.status(400).json({ error: "That's a lot of rows (over 2000) — split it into smaller batches" });
+
+  const tenantId = req.user!.tenantId;
+  const results: ImportRowResult[] = [];
+  let created = 0;
+
+  for (let i = 0; i < sheet.length; i++) {
+    const rowNum = i + 2; // account for the header row
+    const row = normalizeRowKeys(sheet[i]);
+    const name = String(row["name"] ?? "").trim();
+
+    if (!name) {
+      results.push({ row: rowNum, status: "error", reason: "Missing name" });
+      continue;
+    }
+
+    const rawCategory = String(row["category"] ?? "").trim();
+    const category = VALID_CATEGORIES.find((c) => c.toLowerCase() === rawCategory.toLowerCase());
+    if (!category) {
+      results.push({ row: rowNum, name, status: "error", reason: `Category must be one of ${VALID_CATEGORIES.join(", ")}` });
+      continue;
+    }
+
+    const unit = String(row["unit"] ?? "").trim();
+    if (!unit) {
+      results.push({ row: rowNum, name, status: "error", reason: "Missing unit" });
+      continue;
+    }
+
+    const quantity = Number(row["quantity"] ?? 0);
+    const reorderLevel = Number(row["reorder level"] ?? 0);
+    const unitPrice = Number(row["unit price"] ?? NaN);
+    if (!Number.isFinite(quantity) || quantity < 0) {
+      results.push({ row: rowNum, name, status: "error", reason: "Invalid quantity" });
+      continue;
+    }
+    if (!Number.isFinite(reorderLevel) || reorderLevel < 0) {
+      results.push({ row: rowNum, name, status: "error", reason: "Invalid reorder level" });
+      continue;
+    }
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      results.push({ row: rowNum, name, status: "error", reason: "Invalid unit price" });
+      continue;
+    }
+
+    let expiryDate: Date | undefined;
+    const rawExpiry = row["expiry date"];
+    if (rawExpiry instanceof Date) {
+      expiryDate = rawExpiry;
+    } else if (typeof rawExpiry === "string" && rawExpiry.trim()) {
+      const d = new Date(rawExpiry.trim());
+      if (Number.isNaN(d.getTime())) {
+        results.push({ row: rowNum, name, status: "error", reason: "Invalid expiry date — use YYYY-MM-DD" });
+        continue;
+      }
+      expiryDate = d;
+    }
+
+    const batchNo = String(row["batch no"] ?? "").trim() || undefined;
+
+    const existing = await prisma.inventoryItem.findFirst({
+      where: { tenantId, name: { equals: name, mode: "insensitive" } },
+    });
+    if (existing) {
+      results.push({ row: rowNum, name, status: "skipped", reason: "An item with this name already exists" });
+      continue;
+    }
+
+    const item = await prisma.inventoryItem.create({
+      data: { tenantId, name, category, unit, quantity, reorderLevel, unitPrice, expiryDate, batchNo },
+    });
+    if (item.quantity > 0) {
+      await prisma.inventoryTransaction.create({
+        data: { tenantId, itemId: item.id, changeQty: item.quantity, reason: "Initial stock (import)", createdById: req.user!.id },
+      });
+    }
+    results.push({ row: rowNum, name, status: "created" });
+    created += 1;
+  }
+
+  const skipped = results.filter((r) => r.status === "skipped");
+  const errors = results.filter((r) => r.status === "error");
+
+  await logAction({
+    tenantId,
+    userId: req.user!.id,
+    action: "inventory.bulk_imported",
+    entityType: "InventoryItem",
+    details: { created, skipped: skipped.length, errors: errors.length, filename: req.file.originalname },
+  });
+
+  res.status(201).json({ created, skipped, errors, totalRows: sheet.length });
 });
 
 export default router;
