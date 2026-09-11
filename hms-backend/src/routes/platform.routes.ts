@@ -6,6 +6,8 @@ import { prisma } from "../db";
 import { requirePlatformAuth, PlatformAuthedRequest } from "../middleware/platformAuth";
 import { subscriptionStateFor } from "../middleware/subscriptionGate";
 import { getRate } from "../utils/fx";
+import { computeExtendedPeriod } from "../utils/subscription";
+import { logAction } from "../utils/audit";
 
 const router = Router();
 
@@ -148,6 +150,65 @@ router.get("/tenants/:id/payments", requirePlatformAuth, async (req, res) => {
   });
 
   res.json({ tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug }, payments });
+});
+
+const recordPaymentSchema = z.object({
+  amount: z.number().min(0.01),
+  currency: z.string().min(1),
+  notes: z.string().max(500).optional(),
+  periodDays: z.number().int().min(1).max(3650).default(30),
+});
+
+/**
+ * POST /platform/tenants/:id/record-payment — for a payment that
+ * happened OUTSIDE the system entirely (bank transfer, cash, mobile
+ * money sent directly, etc.). Deliberately platform-admin-only — a
+ * tenant's own ADMIN must never be able to grant themselves free access
+ * this way. Creates a SubscriptionPayment row (provider MANUAL, already
+ * SUCCESSFUL) and extends the tenant's period using the exact same
+ * shared math as a real Flutterwave/Daraja payment, so it behaves
+ * identically from the tenant's side — the only difference visible
+ * anywhere is the "MANUAL" provider tag on the ledger entry.
+ */
+router.post("/tenants/:id/record-payment", requirePlatformAuth, async (req: PlatformAuthedRequest, res) => {
+  const tenant = await prisma.tenant.findUnique({ where: { id: req.params.id } });
+  if (!tenant) return res.status(404).json({ error: "Tenant not found" });
+
+  const parsed = recordPaymentSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const { amount, currency, notes, periodDays } = parsed.data;
+
+  const { periodStart, periodEnd } = computeExtendedPeriod(tenant.currentPeriodEnd, periodDays);
+  const txRef = `manual_${tenant.id}_${Date.now()}`;
+
+  const [, payment] = await prisma.$transaction([
+    prisma.tenant.update({ where: { id: tenant.id }, data: { currentPeriodEnd: periodEnd } }),
+    prisma.subscriptionPayment.create({
+      data: {
+        tenantId: tenant.id,
+        provider: "MANUAL",
+        txRef,
+        amount,
+        currency: currency.toUpperCase(),
+        status: "SUCCESSFUL",
+        paidAt: new Date(),
+        periodStart,
+        periodEnd,
+        notes,
+        recordedByAdminId: req.platformAdmin!.id,
+      },
+    }),
+  ]);
+
+  await logAction({
+    tenantId: tenant.id,
+    action: "subscription.manual_payment_recorded",
+    entityType: "SubscriptionPayment",
+    entityId: payment.id,
+    details: { amount, currency, periodDays, notes, recordedByPlatformAdmin: req.platformAdmin!.name },
+  });
+
+  res.status(201).json(payment);
 });
 
 // ---------------------------------------------------------------------

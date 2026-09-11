@@ -19,11 +19,10 @@ import {
   isDarajaConfigured,
 } from "../utils/daraja";
 import { convertToKes } from "../utils/fx";
+import { computeExtendedPeriod } from "../utils/subscription";
 import { logAction } from "../utils/audit";
 
 const router = Router();
-
-const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
  * A tenant's effective price: their own override if set (via the
@@ -135,8 +134,7 @@ async function applySuccessfulPayment(
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
   if (!tenant) return null;
 
-  const periodStart = tenant.currentPeriodEnd > new Date() ? tenant.currentPeriodEnd : new Date();
-  const periodEnd = new Date(periodStart.getTime() + ONE_MONTH_MS);
+  const { periodStart, periodEnd } = computeExtendedPeriod(tenant.currentPeriodEnd, 30);
 
   const [, updatedPayment] = await prisma.$transaction([
     prisma.tenant.update({ where: { id: tenantId }, data: { currentPeriodEnd: periodEnd } }),

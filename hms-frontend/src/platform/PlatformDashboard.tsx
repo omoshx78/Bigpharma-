@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { Printer, Download } from "lucide-react";
 import { platformApi, downloadCsv } from "./api";
 import { ApiError } from "../api/client";
@@ -103,7 +104,7 @@ export default function PlatformDashboard() {
             {tenants.map((t) => (
               <tr key={t.id} className="border-t border-slate-800">
                 <td className="px-4 py-2.5">
-                  <p className="text-slate-100">{t.name}</p>
+                  <Link to={`/platform/tenants/${t.id}`} className="text-slate-100 hover:text-emerald-400 hover:underline">{t.name}</Link>
                   <p className="text-xs text-slate-500">{t.slug}</p>
                 </td>
                 <td className="px-4 py-2.5">

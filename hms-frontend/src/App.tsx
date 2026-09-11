@@ -23,6 +23,7 @@ import PrintStock from "./pages/PrintStock";
 import PrintReportDetail from "./pages/PrintReportDetail";
 import PlatformLogin from "./platform/PlatformLogin";
 import PlatformDashboard from "./platform/PlatformDashboard";
+import PlatformTenantDetail from "./platform/PlatformTenantDetail";
 import PlatformPayments from "./platform/PlatformPayments";
 import PlatformExpenses from "./platform/PlatformExpenses";
 
@@ -157,6 +158,7 @@ export default function App() {
         }
       >
         <Route path="/platform" element={<PlatformDashboard />} />
+        <Route path="/platform/tenants/:id" element={<PlatformTenantDetail />} />
         <Route path="/platform/payments" element={<PlatformPayments />} />
         <Route path="/platform/expenses" element={<PlatformExpenses />} />
       </Route>

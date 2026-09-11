@@ -106,6 +106,7 @@ enum SubscriptionPaymentStatus {
 enum SubscriptionPaymentProvider {
   FLUTTERWAVE
   DARAJA
+  MANUAL
 }
 
 // --- Platform layer: sits ABOVE every tenant, completely separate from
@@ -178,6 +179,11 @@ model SubscriptionPayment {
   // verify the M-Pesa payment instead of the tenant's original currency.
   kesAmount Decimal? @db.Decimal(10, 2)
   fxRate    Decimal? @db.Decimal(12, 6)
+
+  // Manual (off-system) payments — a Super Admin crediting a bank
+  // transfer, cash payment, etc. recorded outside Flutterwave/Daraja.
+  notes             String?
+  recordedByAdminId String? // PlatformAdmin.id — no FK, since a manual payment should survive even if that admin account is later removed
 
   @@index([tenantId, createdAt])
 }
