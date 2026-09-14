@@ -26,6 +26,7 @@ interface TenantRow {
   currentPeriodEnd: string;
   amount?: number;
   currency?: string;
+  hasCustomPrice?: boolean;
   lastPaymentAt: string | null;
   lastPaymentProvider: string | null;
 }
@@ -110,7 +111,10 @@ export default function PlatformDashboard() {
                 <td className="px-4 py-2.5">
                   <span className={`text-xs px-2 py-0.5 rounded-full border ${STATE_STYLE[t.state]}`}>{t.state}</span>
                 </td>
-                <td className="px-4 py-2.5 text-slate-300">{t.amount != null ? `${t.currency} ${t.amount.toLocaleString()}` : "—"}</td>
+                <td className="px-4 py-2.5 text-slate-300">
+                  {t.amount != null ? `${t.currency} ${t.amount.toLocaleString()}` : "—"}
+                  {t.hasCustomPrice && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-sky-950 text-sky-400 border border-sky-800">custom</span>}
+                </td>
                 <td className="px-4 py-2.5 text-slate-300">{new Date(t.currentPeriodEnd).toLocaleDateString()}</td>
                 <td className="px-4 py-2.5 text-slate-300">
                   {t.lastPaymentAt ? (

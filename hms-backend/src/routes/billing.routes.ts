@@ -19,7 +19,7 @@ import {
   isDarajaConfigured,
 } from "../utils/daraja";
 import { convertToKes } from "../utils/fx";
-import { computeExtendedPeriod } from "../utils/subscription";
+import { computeExtendedPeriod, resolveTenantPrice as resolveTenantPriceShared } from "../utils/subscription";
 import { logAction } from "../utils/audit";
 
 const router = Router();
@@ -32,9 +32,7 @@ const router = Router();
  * so a price change here is guaranteed to apply consistently everywhere.
  */
 function resolveTenantPrice(tenant: { subscriptionAmount: unknown; subscriptionCurrency: string | null }) {
-  const amount = tenant.subscriptionAmount != null ? Number(tenant.subscriptionAmount) : SUBSCRIPTION_AMOUNT;
-  const currency = tenant.subscriptionCurrency || SUBSCRIPTION_CURRENCY;
-  return { amount, currency };
+  return resolveTenantPriceShared(tenant, SUBSCRIPTION_AMOUNT, SUBSCRIPTION_CURRENCY);
 }
 
 router.get("/status", requireAuth, async (req: AuthedRequest, res) => {

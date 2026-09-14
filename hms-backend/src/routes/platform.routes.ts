@@ -6,7 +6,8 @@ import { prisma } from "../db";
 import { requirePlatformAuth, PlatformAuthedRequest } from "../middleware/platformAuth";
 import { subscriptionStateFor } from "../middleware/subscriptionGate";
 import { getRate } from "../utils/fx";
-import { computeExtendedPeriod } from "../utils/subscription";
+import { computeExtendedPeriod, resolveTenantPrice } from "../utils/subscription";
+import { SUBSCRIPTION_AMOUNT, SUBSCRIPTION_CURRENCY } from "../utils/flutterwave";
 import { logAction } from "../utils/audit";
 
 const router = Router();
@@ -105,6 +106,7 @@ router.get("/tenants", requirePlatformAuth, async (req, res) => {
         where: { tenantId: t.id, status: "SUCCESSFUL" },
         orderBy: { paidAt: "desc" },
       });
+      const { amount, currency } = resolveTenantPrice(t, SUBSCRIPTION_AMOUNT, SUBSCRIPTION_CURRENCY);
       return {
         id: t.id,
         name: t.name,
@@ -113,8 +115,9 @@ router.get("/tenants", requirePlatformAuth, async (req, res) => {
         createdAt: t.createdAt,
         currentPeriodEnd: t.currentPeriodEnd,
         state: subscriptionStateFor(t.currentPeriodEnd),
-        amount: t.subscriptionAmount != null ? Number(t.subscriptionAmount) : undefined,
-        currency: t.subscriptionCurrency || undefined,
+        amount,
+        currency,
+        hasCustomPrice: t.subscriptionAmount != null,
         lastPaymentAt: lastPayment?.paidAt || null,
         lastPaymentProvider: lastPayment?.provider || null,
       };
@@ -149,7 +152,53 @@ router.get("/tenants/:id/payments", requirePlatformAuth, async (req, res) => {
     orderBy: { createdAt: "desc" },
   });
 
-  res.json({ tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug }, payments });
+  const { amount, currency } = resolveTenantPrice(tenant, SUBSCRIPTION_AMOUNT, SUBSCRIPTION_CURRENCY);
+  res.json({
+    tenant: {
+      id: tenant.id,
+      name: tenant.name,
+      slug: tenant.slug,
+      state: subscriptionStateFor(tenant.currentPeriodEnd),
+      currentPeriodEnd: tenant.currentPeriodEnd,
+      amount,
+      currency,
+      hasCustomPrice: tenant.subscriptionAmount != null,
+      platformDefaultAmount: SUBSCRIPTION_AMOUNT,
+      platformDefaultCurrency: SUBSCRIPTION_CURRENCY,
+    },
+    payments,
+  });
+});
+
+const setPriceSchema = z.union([
+  z.object({ clear: z.literal(true) }),
+  z.object({ amount: z.number().min(0.01), currency: z.string().min(1) }),
+]);
+
+/**
+ * PATCH /platform/tenants/:id/price — the web-UI equivalent of the
+ * billing:set-price CLI script. Both remain available; this just adds
+ * a faster path for the common case of tweaking one tenant's price
+ * without needing shell access. Deliberately platform-admin-only, same
+ * as the script — never exposed to a tenant's own ADMIN.
+ */
+router.patch("/tenants/:id/price", requirePlatformAuth, async (req: PlatformAuthedRequest, res) => {
+  const tenant = await prisma.tenant.findUnique({ where: { id: req.params.id } });
+  if (!tenant) return res.status(404).json({ error: "Tenant not found" });
+
+  const parsed = setPriceSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Provide amount + currency, or clear: true to remove the override" });
+
+  if ("clear" in parsed.data) {
+    await prisma.tenant.update({ where: { id: tenant.id }, data: { subscriptionAmount: null, subscriptionCurrency: null } });
+    await logAction({ tenantId: tenant.id, action: "subscription.price_override_cleared", entityType: "Tenant", entityId: tenant.id, details: { by: req.platformAdmin!.name } });
+    return res.json({ amount: SUBSCRIPTION_AMOUNT, currency: SUBSCRIPTION_CURRENCY, hasCustomPrice: false });
+  }
+
+  const { amount, currency } = parsed.data;
+  await prisma.tenant.update({ where: { id: tenant.id }, data: { subscriptionAmount: amount, subscriptionCurrency: currency.toUpperCase() } });
+  await logAction({ tenantId: tenant.id, action: "subscription.price_override_set", entityType: "Tenant", entityId: tenant.id, details: { amount, currency, by: req.platformAdmin!.name } });
+  res.json({ amount, currency: currency.toUpperCase(), hasCustomPrice: true });
 });
 
 const recordPaymentSchema = z.object({
