@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Printer, Upload, Download, X } from "lucide-react";
+import { Plus, Printer, Upload, Download, X, Pencil } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import { Card, SectionHeader, Badge, ErrorBanner, money } from "../components/ui";
 import { InventoryItem } from "../types";
+import { useAuth } from "../auth/AuthContext";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
@@ -11,12 +12,15 @@ const CATEGORIES = ["All", "Medicine", "Consumable", "Equipment"];
 const ADJUST_REASONS = ["Expired", "Damaged", "Stocktake correction", "Internal use", "Theft/loss", "Other"];
 
 export default function Inventory() {
+  const { user } = useAuth();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [filter, setFilter] = useState("All");
   const [error, setError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [restockAmounts, setRestockAmounts] = useState<Record<string, string>>({});
   const [form, setForm] = useState({ name: "", category: "Medicine", unit: "tablet", quantity: "0", reorderLevel: "20", unitPrice: "0" });
+  const [editingPriceFor, setEditingPriceFor] = useState<string | null>(null);
+  const [priceValue, setPriceValue] = useState("");
   const [adjustFor, setAdjustFor] = useState<string | null>(null);
   const [adjustForm, setAdjustForm] = useState({ quantity: "", reason: ADJUST_REASONS[0], notes: "" });
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -60,6 +64,26 @@ export default function Inventory() {
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not restock");
+    }
+  };
+
+  const startEditPrice = (item: InventoryItem) => {
+    setEditingPriceFor(item.id);
+    setPriceValue(String(item.unitPrice));
+  };
+
+  const savePrice = async (id: string) => {
+    const price = Number(priceValue);
+    if (!Number.isFinite(price) || price < 0) {
+      setError("Enter a valid price");
+      return;
+    }
+    try {
+      await api.patch(`/inventory/${id}`, { unitPrice: price });
+      setEditingPriceFor(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not update price");
     }
   };
 
@@ -177,7 +201,31 @@ export default function Inventory() {
                   </Badge>
                 </td>
                 <td className="text-slate-500">{i.reorderLevel}</td>
-                <td className="text-slate-500">{money(i.unitPrice)}</td>
+                <td className="text-slate-500">
+                  {editingPriceFor === i.id ? (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        autoFocus
+                        value={priceValue}
+                        onChange={(e) => setPriceValue(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && savePrice(i.id)}
+                        className="w-20 border border-slate-300 rounded px-2 py-1 text-xs"
+                      />
+                      <button onClick={() => savePrice(i.id)} className="text-xs text-emerald-700 hover:underline">Save</button>
+                      <button onClick={() => setEditingPriceFor(null)} className="text-slate-400 hover:text-slate-600"><X size={13} /></button>
+                    </div>
+                  ) : (
+                    <span className="flex items-center gap-1.5">
+                      {money(i.unitPrice)}
+                      {user?.role === "ADMIN" && (
+                        <button onClick={() => startEditPrice(i)} className="text-slate-400 hover:text-dhs-700"><Pencil size={12} /></button>
+                      )}
+                    </span>
+                  )}
+                </td>
                 <td>
                   <div className="flex items-center gap-1.5">
                     <input type="number" placeholder="qty" value={restockAmounts[i.id] || ""} onChange={(e) => setRestockAmounts((r) => ({ ...r, [i.id]: e.target.value }))} className="w-16 border border-slate-300 rounded px-2 py-1 text-xs" />
