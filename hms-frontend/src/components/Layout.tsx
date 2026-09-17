@@ -2,11 +2,12 @@ import { NavLink, Outlet, Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard, ShoppingCart, Wallet, Boxes, BarChart3, LogOut,
-  KeyRound, ShieldCheck, ShieldAlert, Receipt, CreditCard, AlertTriangle, HelpCircle,
+  KeyRound, ShieldCheck, ShieldAlert, Receipt, CreditCard, AlertTriangle, HelpCircle, Compass,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { api } from "../api/client";
 import { Role } from "../types";
+import { DemoTour, hasSeenDemoTour } from "./DemoTour";
 
 const NAV: { to: string; label: string; icon: any; roles: Role[] | "all" }[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, roles: "all" },
@@ -33,11 +34,16 @@ export function Layout() {
   const { user, tenant, logout } = useAuth();
   const visible = NAV.filter((n) => n.roles === "all" || (user && (user.role === "ADMIN" || n.roles.includes(user.role))));
   const [billingState, setBillingState] = useState<{ state: "ACTIVE" | "GRACE" | "LOCKED"; currentPeriodEnd: string } | null>(null);
+  const [tourActive, setTourActive] = useState(false);
 
   useEffect(() => {
     if (user?.role !== "ADMIN") return;
     api.get("/billing/status").then(setBillingState).catch(() => {});
   }, [user?.role]);
+
+  useEffect(() => {
+    if (tenant?.isDemo && !hasSeenDemoTour()) setTourActive(true);
+  }, [tenant?.isDemo]);
 
   return (
     <div className="w-full min-h-screen bg-slate-50 text-slate-900 flex">
@@ -66,6 +72,16 @@ export function Layout() {
         <div className="px-4 py-3 border-t border-dhs-800 text-xs">
           <p className="text-dhs-100 font-medium">{user?.name}</p>
           <p className="text-dhs-400 mb-2">{user?.role}</p>
+          {tenant?.isDemo && (
+            <>
+              <button onClick={() => setTourActive(true)} className="flex items-center gap-1.5 text-dhs-300 hover:text-white mb-1.5">
+                <Compass size={13} /> Take the tour
+              </button>
+              <Link to="/guide" className="flex items-center gap-1.5 text-dhs-300 hover:text-white mb-1.5">
+                <HelpCircle size={13} /> Quick start guide
+              </Link>
+            </>
+          )}
           <Link to="/change-password" className="flex items-center gap-1.5 text-dhs-300 hover:text-white mb-1.5">
             <KeyRound size={13} /> Change password
           </Link>
@@ -106,6 +122,7 @@ export function Layout() {
           <Outlet />
         </div>
       </main>
+      <DemoTour active={tourActive} onClose={() => setTourActive(false)} />
     </div>
   );
 }

@@ -85,6 +85,10 @@ export default function Login() {
             <button onClick={fillDemoCredentials} className="text-xs font-medium text-white underline hover:text-dhs-100">
               Fill in the demo login
             </button>
+            <span className="text-dhs-500 mx-2 text-xs">or</span>
+            <Link to="/guide" className="text-xs font-medium text-white underline hover:text-dhs-100">
+              read the quick start guide
+            </Link>
           </div>
         </div>
       </div>

@@ -85,7 +85,7 @@ router.post("/signup", async (req, res) => {
   res.status(201).json({
     token,
     user: { id: user.id, name: user.name, role: user.role, email: user.email },
-    tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug },
+    tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, isDemo: tenant.isDemo },
   });
 });
 
@@ -111,7 +111,7 @@ router.post("/login", async (req, res) => {
   res.json({
     token,
     user: { id: user.id, name: user.name, role: user.role, email: user.email },
-    tenant: { id: user.tenant.id, name: user.tenant.name, slug: user.tenant.slug },
+    tenant: { id: user.tenant.id, name: user.tenant.name, slug: user.tenant.slug, isDemo: user.tenant.isDemo },
   });
 });
 

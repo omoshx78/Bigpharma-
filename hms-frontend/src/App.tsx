@@ -8,6 +8,7 @@ import { Role } from "./types";
 
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import Guide from "./pages/Guide";
 import Dashboard from "./pages/Dashboard";
 import NewSale from "./pages/NewSale";
 import Cashier from "./pages/Cashier";
@@ -65,6 +66,7 @@ export default function App() {
         path="/signup"
         element={loading ? <div className="p-8 text-sm text-slate-400">Loading...</div> : user ? <Navigate to="/" replace /> : <Signup />}
       />
+      <Route path="/guide" element={<Guide />} />
       <Route
         path="/print/:saleId"
         element={

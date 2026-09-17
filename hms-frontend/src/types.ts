@@ -10,6 +10,7 @@ export interface Tenant {
   id: string;
   name: string;
   slug: string;
+  isDemo?: boolean;
 }
 
 export interface InventoryItem {
