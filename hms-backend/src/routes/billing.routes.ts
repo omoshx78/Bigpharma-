@@ -39,10 +39,11 @@ router.get("/status", requireAuth, async (req: AuthedRequest, res) => {
   const tenant = await prisma.tenant.findUnique({ where: { id: req.user!.tenantId } });
   if (!tenant) return res.status(404).json({ error: "Tenant not found" });
 
-  const state = subscriptionStateFor(tenant.currentPeriodEnd);
+  const state = tenant.isDemo ? "ACTIVE" : subscriptionStateFor(tenant.currentPeriodEnd);
   const { amount, currency } = resolveTenantPrice(tenant);
   res.json({
     state,
+    isDemo: tenant.isDemo,
     currentPeriodEnd: tenant.currentPeriodEnd,
     amount,
     currency,

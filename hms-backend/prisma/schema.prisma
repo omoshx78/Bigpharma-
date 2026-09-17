@@ -59,6 +59,13 @@ model Tenant {
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 
+  // A public showcase tenant (fixed demo credentials, sample data) that
+  // never needs to pay and never soft-locks, regardless of
+  // currentPeriodEnd — see subscriptionGate.ts. Also excluded from the
+  // Super Admin dashboard's revenue/tenant-count figures, since it's not
+  // a real paying customer.
+  isDemo Boolean @default(false)
+
   // Simple atomic counter used to generate human-friendly, per-tenant
   // sale numbers (SALE-1, SALE-2, ...) without a shared global sequence
   // leaking information between tenants (or contending under load).

@@ -6,6 +6,7 @@ import { Card, SectionHeader, ErrorBanner } from "../components/ui";
 
 interface BillingStatus {
   state: "ACTIVE" | "GRACE" | "LOCKED";
+  isDemo: boolean;
   currentPeriodEnd: string;
   amount: number;
   currency: string;
@@ -164,9 +165,13 @@ export default function Billing() {
             </div>
           </div>
 
-          {!status.billingConfigured ? (
+          {status.isDemo ? (
+            <p className="text-sm text-slate-600 bg-violet-50 border border-violet-200 rounded-lg p-3">
+              This is a public demo account — it's free to explore and never requires payment. Ready to run your own pharmacy? <a href="/signup" className="font-medium underline">Create your own account</a> instead.
+            </p>
+          ) : !status.billingConfigured ? (
             <p className="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3">
-              Online payment isn't set up yet — contact support to pay for your subscription.
+              Online payment isn't set up yet — <a href="mailto:info@jazzmedia.co.ke" className="font-medium underline text-slate-700">contact support</a> to pay for your subscription.
             </p>
           ) : (
             <div className="space-y-4">
@@ -222,7 +227,7 @@ export default function Billing() {
                   {mpesaPhase === "failed" && (
                     <div className="space-y-2">
                       <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-sm text-rose-800">
-                        We didn't get confirmation of that payment — it may have been cancelled or timed out. If money left your account, contact support before trying again.
+                        We didn't get confirmation of that payment — it may have been cancelled or timed out. If money left your account, <a href="mailto:info@jazzmedia.co.ke" className="font-medium underline">contact support</a> before trying again.
                       </div>
                       <button onClick={resetMpesa} className="text-xs text-dhs-700 hover:underline">Try again</button>
                     </div>

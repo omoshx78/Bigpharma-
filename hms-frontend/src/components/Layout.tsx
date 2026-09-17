@@ -2,7 +2,7 @@ import { NavLink, Outlet, Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard, ShoppingCart, Wallet, Boxes, BarChart3, LogOut,
-  KeyRound, ShieldCheck, ShieldAlert, Receipt, CreditCard, AlertTriangle,
+  KeyRound, ShieldCheck, ShieldAlert, Receipt, CreditCard, AlertTriangle, HelpCircle,
 } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { api } from "../api/client";
@@ -69,6 +69,9 @@ export function Layout() {
           <Link to="/change-password" className="flex items-center gap-1.5 text-dhs-300 hover:text-white mb-1.5">
             <KeyRound size={13} /> Change password
           </Link>
+          <a href="mailto:info@jazzmedia.co.ke" className="flex items-center gap-1.5 text-dhs-300 hover:text-white mb-1.5">
+            <HelpCircle size={13} /> Help &amp; support
+          </a>
           <button onClick={logout} className="flex items-center gap-1.5 text-dhs-300 hover:text-white">
             <LogOut size={13} /> Log out
           </button>

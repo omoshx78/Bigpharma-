@@ -93,6 +93,9 @@ export default function Signup() {
             Sign in
           </Link>
         </p>
+        <p className="text-xs text-slate-400 mt-6 text-center">
+          Questions or support: <a href="mailto:info@jazzmedia.co.ke" className="text-slate-600 hover:underline">info@jazzmedia.co.ke</a> / <a href="tel:+254787968586" className="text-slate-600 hover:underline">+254 787 968 586</a>
+        </p>
       </div>
     </div>
   );

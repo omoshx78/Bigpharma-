@@ -8,6 +8,7 @@ interface Summary {
   period: string;
   reportingCurrency: string;
   tenantCount: number;
+  demoTenantCount: number;
   active: number;
   grace: number;
   locked: number;
@@ -27,6 +28,7 @@ interface TenantRow {
   amount?: number;
   currency?: string;
   hasCustomPrice?: boolean;
+  isDemo?: boolean;
   lastPaymentAt: string | null;
   lastPaymentProvider: string | null;
 }
@@ -76,7 +78,7 @@ export default function PlatformDashboard() {
 
       {summary && (
         <div className="grid grid-cols-4 gap-4 mb-8">
-          <Card label="Tenants" value={String(summary.tenantCount)} sub={`${summary.active} active`} />
+          <Card label="Tenants" value={String(summary.tenantCount)} sub={`${summary.active} active${summary.demoTenantCount > 0 ? ` \u00b7 ${summary.demoTenantCount} demo excluded` : ""}`} />
           <Card label={`Revenue (${summary.period})`} value={`${summary.reportingCurrency} ${summary.revenue.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} sub={`${summary.paymentCount} payments`} />
           <Card label={`Expenses (${summary.period})`} value={`${summary.reportingCurrency} ${summary.expenses.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} sub={summary.otherCurrencyExpenseCount > 0 ? `+${summary.otherCurrencyExpenseCount} in other currencies` : undefined} />
           <Card label="Net" value={`${summary.reportingCurrency} ${summary.net.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} highlight={summary.net >= 0 ? "positive" : "negative"} />
@@ -106,6 +108,7 @@ export default function PlatformDashboard() {
               <tr key={t.id} className="border-t border-slate-800">
                 <td className="px-4 py-2.5">
                   <Link to={`/platform/tenants/${t.id}`} className="text-slate-100 hover:text-emerald-400 hover:underline">{t.name}</Link>
+                  {t.isDemo && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-violet-950 text-violet-400 border border-violet-800">DEMO</span>}
                   <p className="text-xs text-slate-500">{t.slug}</p>
                 </td>
                 <td className="px-4 py-2.5">

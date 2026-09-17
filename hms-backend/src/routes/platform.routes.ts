@@ -112,9 +112,10 @@ router.get("/tenants", requirePlatformAuth, async (req, res) => {
         name: t.name,
         slug: t.slug,
         active: t.active,
+        isDemo: t.isDemo,
         createdAt: t.createdAt,
         currentPeriodEnd: t.currentPeriodEnd,
-        state: subscriptionStateFor(t.currentPeriodEnd),
+        state: t.isDemo ? "ACTIVE" : subscriptionStateFor(t.currentPeriodEnd),
         amount,
         currency,
         hasCustomPrice: t.subscriptionAmount != null,
@@ -348,10 +349,14 @@ router.get("/summary", requirePlatformAuth, async (req, res) => {
   const period = (req.query.period as string) || "month";
   const range = periodRange(period, req.query.from as string, req.query.to as string);
 
-  const [tenants, paymentsInPeriod, expensesInPeriod] = await Promise.all([
-    prisma.tenant.findMany(),
+  // Demo tenant is excluded everywhere here — it's not a real paying
+  // customer, and including it would silently inflate/distort every
+  // one of these figures.
+  const [tenants, demoCount, paymentsInPeriod, expensesInPeriod] = await Promise.all([
+    prisma.tenant.findMany({ where: { isDemo: false } }),
+    prisma.tenant.count({ where: { isDemo: true } }),
     prisma.subscriptionPayment.findMany({
-      where: { status: "SUCCESSFUL", ...(range ? { paidAt: { gte: range.gte, lt: range.lt } } : {}) },
+      where: { status: "SUCCESSFUL", tenant: { isDemo: false }, ...(range ? { paidAt: { gte: range.gte, lt: range.lt } } : {}) },
     }),
     prisma.platformExpense.findMany({ where: range ? { date: { gte: range.gte, lt: range.lt } } : {} }),
   ]);
@@ -374,6 +379,7 @@ router.get("/summary", requirePlatformAuth, async (req, res) => {
     period,
     reportingCurrency: REPORTING_CURRENCY,
     tenantCount: tenants.length,
+    demoTenantCount: demoCount,
     active,
     grace,
     locked,

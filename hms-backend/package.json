@@ -11,6 +11,7 @@
     "start": "node dist/index.js",
     "prisma:generate": "prisma generate",
     "seed": "ts-node prisma/seed.ts",
+    "demo:reset": "ts-node prisma/reset-demo-data.ts",
     "billing:set-price": "ts-node prisma/set-tenant-price.ts",
     "platform:create-admin": "ts-node prisma/create-platform-admin.ts"
   },

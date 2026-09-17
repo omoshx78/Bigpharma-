@@ -49,8 +49,9 @@ export async function subscriptionGate(req: Request, res: Response, next: NextFu
   }
   if (!tenantId) return next();
 
-  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { currentPeriodEnd: true } });
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { currentPeriodEnd: true, isDemo: true } });
   if (!tenant) return next();
+  if (tenant.isDemo) return next(); // the public showcase tenant never locks, regardless of its period
 
   if (subscriptionStateFor(tenant.currentPeriodEnd) === "LOCKED") {
     return res.status(402).json({
