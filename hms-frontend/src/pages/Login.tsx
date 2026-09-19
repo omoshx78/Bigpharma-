@@ -89,6 +89,10 @@ export default function Login() {
             <Link to="/guide" className="text-xs font-medium text-white underline hover:text-dhs-100">
               read the quick start guide
             </Link>
+            <span className="text-dhs-500 mx-2 text-xs">or</span>
+            <a href="https://www.youtube.com/watch?v=2QN5bzg939o" target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-white underline hover:text-dhs-100">
+              watch a 2-min walkthrough
+            </a>
           </div>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
+import { Readable } from "stream";
 import { z } from "zod";
 import { prisma } from "../db";
 import { requireAuth, AuthedRequest } from "../middleware/auth";
@@ -160,20 +161,17 @@ router.get("/:id/transactions", requireAuth, async (req: AuthedRequest, res) => 
 const IMPORT_HEADERS = ["Name", "Category", "Unit", "Quantity", "Reorder Level", "Unit Price", "Expiry Date", "Batch No"];
 
 /** GET /inventory/import/template — a starter .xlsx with the exact headers the importer expects, plus one example row. Public (no requireAuth) since it's generic and carries no tenant data — lets the frontend use a plain download link. */
-router.get("/import/template", (_req, res) => {
-  const wsData = [
-    IMPORT_HEADERS,
-    ["Paracetamol 500mg", "Medicine", "tablet", 200, 50, 5, "2027-06-30", "PCM-2501"],
-    ["Surgical Gloves (box)", "Consumable", "box", 20, 10, 300, "", ""],
-  ];
-  const ws = XLSX.utils.aoa_to_sheet(wsData);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Stock");
-  const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+router.get("/import/template", async (_req, res) => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Stock");
+  sheet.addRow(IMPORT_HEADERS);
+  sheet.addRow(["Paracetamol 500mg", "Medicine", "tablet", 200, 50, 5, "2027-06-30", "PCM-2501"]);
+  sheet.addRow(["Surgical Gloves (box)", "Consumable", "box", 20, 10, 300, "", ""]);
+  const buffer = await workbook.xlsx.writeBuffer();
 
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", 'attachment; filename="stock-import-template.xlsx"');
-  res.send(buffer);
+  res.send(Buffer.from(buffer));
 });
 
 const VALID_CATEGORIES = ["Medicine", "Consumable", "Equipment"];
@@ -182,6 +180,35 @@ function normalizeRowKeys(row: Record<string, unknown>): Record<string, unknown>
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(row)) out[k.trim().toLowerCase()] = v;
   return out;
+}
+
+/**
+ * Converts an ExcelJS worksheet into the same shape SheetJS's
+ * sheet_to_json used to produce — an array of objects keyed by the
+ * header row — so none of the row-validation logic below this needs to
+ * change, only how the file gets read.
+ */
+function worksheetToObjects(worksheet: ExcelJS.Worksheet): Record<string, unknown>[] {
+  const rows: Record<string, unknown>[] = [];
+  let headers: string[] = [];
+  worksheet.eachRow((row, rowNumber) => {
+    const values = row.values as unknown[]; // 1-indexed; values[0] is unused
+    if (rowNumber === 1) {
+      headers = values.slice(1).map((h) => String(h ?? "").trim());
+      return;
+    }
+    const obj: Record<string, unknown> = {};
+    headers.forEach((header, i) => {
+      let v: unknown = values[i + 1];
+      if (v && typeof v === "object") {
+        if ("result" in (v as any)) v = (v as any).result; // formula cell
+        else if ("text" in (v as any)) v = (v as any).text; // rich-text cell
+      }
+      obj[header] = v ?? "";
+    });
+    rows.push(obj);
+  });
+  return rows;
 }
 
 interface ImportRowResult {
@@ -193,22 +220,30 @@ interface ImportRowResult {
 
 /**
  * POST /inventory/import — bulk-add inventory from an uploaded Excel or
- * CSV file (xlsx parses both). Rows matching an EXISTING item by name
- * (case-insensitive, within this tenant) are skipped, not updated — use
- * Restock or Adjust for changing an existing item's quantity. Every
- * created row goes through the exact same two-step
- * InventoryItem + InventoryTransaction creation as a manually-added item,
- * so the stock ledger looks identical either way.
+ * CSV file. Rows matching an EXISTING item by name (case-insensitive,
+ * within this tenant) are skipped, not updated — use Restock or Adjust
+ * for changing an existing item's quantity. Every created row goes
+ * through the exact same two-step InventoryItem + InventoryTransaction
+ * creation as a manually-added item, so the stock ledger looks
+ * identical either way.
  */
 router.post("/import", requireAuth, requireRole("ORDER_TAKER"), upload.single("file"), async (req: AuthedRequest, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
   let sheet: Record<string, unknown>[];
   try {
-    const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true });
-    const firstSheetName = wb.SheetNames[0];
-    if (!firstSheetName) throw new Error("empty workbook");
-    sheet = XLSX.utils.sheet_to_json(wb.Sheets[firstSheetName], { defval: "" });
+    const isCsv = req.file.originalname.toLowerCase().endsWith(".csv") || req.file.mimetype.includes("csv");
+    const workbook = new ExcelJS.Workbook();
+    let worksheet: ExcelJS.Worksheet;
+    if (isCsv) {
+      worksheet = await workbook.csv.read(Readable.from(req.file.buffer as any));
+    } else {
+      await workbook.xlsx.load(req.file.buffer as any);
+      const first = workbook.worksheets[0];
+      if (!first) throw new Error("empty workbook");
+      worksheet = first;
+    }
+    sheet = worksheetToObjects(worksheet);
   } catch {
     return res.status(400).json({ error: "Could not read that file — make sure it's a valid .xlsx or .csv file" });
   }

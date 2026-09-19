@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import "express-async-errors";
 import cors from "cors";
+import helmet from "helmet";
 import path from "path";
 import fs from "fs";
 import authRoutes from "./routes/auth.routes";
@@ -14,6 +15,23 @@ import platformRoutes from "./routes/platform.routes";
 import { subscriptionGate } from "./middleware/subscriptionGate";
 
 const app = express();
+
+// Render sits behind a reverse proxy — without this, Express sees every
+// request as coming from Render's internal proxy IP, not the real
+// client. That breaks rate limiting in the worst possible way (it would
+// throttle ALL users together as one shared bucket instead of just
+// abusive ones), and express-rate-limit will refuse to start without it.
+app.set("trust proxy", 1);
+
+// Sets standard security response headers (X-Content-Type-Options,
+// X-Frame-Options, Strict-Transport-Security, etc.) — cheap, standard
+// defense-in-depth with no behavioral downside for a JSON API.
+// contentSecurityPolicy is left off deliberately: this backend also
+// optionally serves the built frontend directly for on-premise
+// deployments (see bottom of this file), and Helmet's strict default
+// CSP could break that static HTML/JS without more tailored rules than
+// can be verified here. Every other header Helmet sets still applies.
+app.use(helmet({ contentSecurityPolicy: false }));
 
 const explicitOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(",").map((o) => o.trim().replace(/\/+$/, ""))

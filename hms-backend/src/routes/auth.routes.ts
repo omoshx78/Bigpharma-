@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { requireAuth, AuthedRequest } from "../middleware/auth";
 import { requireRole } from "../middleware/roles";
+import { loginRateLimiter, signupRateLimiter } from "../middleware/rateLimit";
 import { logAction } from "../utils/audit";
 
 const router = Router();
@@ -52,7 +53,7 @@ const signupSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
-router.post("/signup", async (req, res) => {
+router.post("/signup", signupRateLimiter, async (req, res) => {
   const parsed = signupSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const { businessName, adminName, email, password } = parsed.data;
@@ -91,7 +92,7 @@ router.post("/signup", async (req, res) => {
 
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
 
-router.post("/login", async (req, res) => {
+router.post("/login", loginRateLimiter, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Email and password are required" });
 

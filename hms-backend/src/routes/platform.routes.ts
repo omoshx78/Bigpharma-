@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { prisma } from "../db";
 import { requirePlatformAuth, PlatformAuthedRequest } from "../middleware/platformAuth";
+import { loginRateLimiter } from "../middleware/rateLimit";
 import { subscriptionStateFor } from "../middleware/subscriptionGate";
 import { getRate } from "../utils/fx";
 import { computeExtendedPeriod, resolveTenantPrice } from "../utils/subscription";
@@ -76,7 +77,7 @@ function sendCsv(res: import("express").Response, filename: string, rows: Record
 
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
 
-router.post("/auth/login", async (req, res) => {
+router.post("/auth/login", loginRateLimiter, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Email and password are required" });
 

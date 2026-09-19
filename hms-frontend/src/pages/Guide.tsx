@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
-import { ArrowLeft, ShoppingCart, Wallet, Boxes, BarChart3, ShieldCheck, Upload } from "lucide-react";
+import { ArrowLeft, ShoppingCart, Wallet, Boxes, BarChart3, ShieldCheck } from "lucide-react";
+
+const DEMO_VIDEO_ID = "2QN5bzg939o";
 
 const STEPS = [
   {
@@ -39,7 +41,17 @@ export default function Guide() {
 
         <img src="/logo.png" alt="Digital Health Solutions" className="h-9 w-auto mb-6" />
         <h1 className="text-2xl font-bold text-slate-900 mb-2">Quick start guide</h1>
-        <p className="text-slate-500 mb-8">Five steps to see how the whole system fits together — takes about five minutes.</p>
+        <p className="text-slate-500 mb-6">Watch the two-minute walkthrough, or skim the five steps below — takes about five minutes either way.</p>
+
+        <div className="aspect-video w-full rounded-xl overflow-hidden border border-slate-200 mb-8">
+          <iframe
+            className="w-full h-full"
+            src={`https://www.youtube.com/embed/${DEMO_VIDEO_ID}`}
+            title="DHS Pharmacy demo walkthrough"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
 
         <div className="space-y-5">
           {STEPS.map(({ icon: Icon, title, body }) => (
